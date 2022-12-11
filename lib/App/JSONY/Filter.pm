@@ -1,7 +1,8 @@
 package App::JSONY::Filter;
 
-use strict;
-use warnings;
+use Moo;
+use CLI::Osprey;
+
 use warnings FATAL => 'uninitialized';
 use experimental 'signatures';
 
@@ -14,11 +15,10 @@ use aliased 'IO::Async::Loop';
 use aliased 'IO::Async::Process';
 use aliased 'IO::Async::Stream';
 
-use CLI::Osprey;
-
-has loop => (is => 'lazy', sub { Loop->new });
+has loop => (is => 'lazy', builder => sub { Loop->new });
 
 subcommand run => sub ($self, @args) {
+  die "No command given" unless @args;
   my $loop = $self->loop;
   my $stdio = Stream->new_for_stdio;
   my $proc = Process->new(command => \@args);
