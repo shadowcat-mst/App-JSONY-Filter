@@ -22,27 +22,30 @@ subcommand run => sub ($self, @args) {
   my $loop = $self->loop;
   my $stdio = Stream->new_for_stdio;
   my $proc = Process->new(command => \@args);
-  my sub each_line_of ($buffref, $cb) {
-    while($$buffref =~ s/^(.*)\r?\n//) {
-      $cb->($1);
+  my sub foreach_line_read :prototype(&) ($cb) {
+    sub ($buffref, @) {
+      while($$buffref =~ s/^(.*)\r?\n//) {
+        local $_ = $1;
+        $cb->($1);
+      }
     }
   }
-  my $write_stdio = $stdio->curry::weak::write;
-  my $write_proc = $proc->fd(0)->curry::weak::write;
+  my $write_to_stdio = $stdio->curry::weak::write;
+  my $write_to_proc = $proc->fd(1)->curry::weak::write;
   $stdio->configure(
-    on_read => sub ($stream, $buffref, $eof) {
-      each_line_of $buffref, sub ($line) {
-        $write_proc->(encode_json(JSONY->load($line)));
-      }
-    }
+    on_read => foreach_line_read {
+      $write_to_proc->(encode_json(JSONY->load($_)));
+    },
+    on_close => $loop->curry::stop,
   );
-  $proc->fd(1)->configure(
-    on_read => sub ($stream, $buffref, $eof) {
-      each_line_of $buffref, sub ($line) {
-        $write_stdio->(jdc(decode_json($line)));
-      }
-    }
+  $proc->fd(0)->configure(
+    on_read => foreach_line_read {
+      $write_to_stdio->(jdc(decode_json($_)));
+    },
+    on_close => $loop->curry::stop,
   );
+  $loop->add($_) for ($stdio, $proc);
+  $loop->start;
 };
 
 1;
