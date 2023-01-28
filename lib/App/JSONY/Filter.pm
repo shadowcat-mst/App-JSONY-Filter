@@ -17,7 +17,7 @@ use aliased 'IO::Async::Stream';
 
 has loop => (is => 'lazy', builder => sub { Loop->new });
 
-subcommand run => sub ($self, @args) {
+subcommand run => sub ($self, $, @args) {
   die "No command given" unless @args;
   my $loop = $self->loop;
   my $stdio = Stream->new_for_stdio;
@@ -31,21 +31,21 @@ subcommand run => sub ($self, @args) {
     }
   }
   my $write_to_stdio = $stdio->curry::weak::write;
-  my $write_to_proc = $proc->fd(1)->curry::weak::write;
+  my $write_to_proc;
   $stdio->configure(
     on_read => foreach_line_read {
       $write_to_proc->(encode_json(JSONY->load($_)));
     },
-    on_close => $loop->curry::stop,
+    on_closed => $proc->curry::kill('TERM'),
   );
-  $proc->fd(0)->configure(
+  $loop->add($_) for ($stdio, $proc);
+  $proc->fd(1)->configure(
     on_read => foreach_line_read {
       $write_to_stdio->(jdc(decode_json($_)));
     },
-    on_close => $loop->curry::stop,
   );
-  $loop->add($_) for ($stdio, $proc);
-  $loop->start;
+  $write_to_proc = $proc->fd(0)->curry::weak::write;
+  $loop->await($proc->finished_future);
 };
 
 1;
